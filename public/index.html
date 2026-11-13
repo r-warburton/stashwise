@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101411">
+  <meta name="description" content="Compare Escape from Tarkov storage space, item images, trader purchase prices and flea market costs.">
+  <title>Stashwise — Tarkov storage finder</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to storage finder</a>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Stashwise home"><img src="/favicon.svg" width="33" height="33" alt=""><span>stashwise<span class="brand-sub">SPACE WELL SPENT</span></span></a>
+      <div class="sidebar-label">STORAGE LIBRARY</div>
+      <nav id="categories" aria-label="Storage categories"></nav>
+      <div class="sidebar-note"><span class="note-grid" aria-hidden="true">▦</span><strong>Every slot counts.</strong><p>A 2× item stores twice the space it occupies in your stash.</p></div>
+      <footer class="sidebar-footer"><span>Made for Escape from Tarkov</span><a href="https://tarkov.dev/" target="_blank" rel="noreferrer">Community item data ↗</a><small>Unofficial fan tool · v0.4</small></footer>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><span class="topbar-context"><span class="context-dot"></span>YOUR STASH, OPTIMISED</span><div class="topbar-actions"><label class="sr-only" for="game-mode">Game mode</label><select id="game-mode"><option value="pvp">Standard PvP</option><option value="seasonal">Seasonal PvP</option><option value="pve">PvE</option></select><button id="refresh" class="button secondary"><span class="refresh-icon" aria-hidden="true">↻</span>Refresh prices</button></div></header>
+      <main id="main">
+        <div class="page-heading"><div><div class="eyebrow">LESS TETRIS. MORE TARKOV.</div><h1>Storage finder<span class="title-dot">.</span></h1><p>More space for your loot. A better deal for your roubles.</p></div><div class="feed-indicator" id="feed-indicator"><span class="status-dot pending"></span><span>Connecting to item data</span></div></div>
+        <section class="summary-strip" aria-label="Current results summary">
+          <div class="stat"><span class="stat-label">Matching items</span><strong id="stat-count">—</strong><span id="stat-count-sub" class="stat-sub">Loading the library</span></div>
+          <div class="stat"><span class="stat-label">Best compression</span><strong id="stat-efficiency">—</strong><span class="stat-sub">Internal / occupied slots</span></div>
+          <div class="stat"><span class="stat-label">Most extra space</span><strong id="stat-gain">—</strong><span class="stat-sub">Slots gained per item</span></div>
+          <div class="stat"><span class="stat-label">Lowest cost / extra slot</span><strong id="stat-value">—</strong><span class="stat-sub">Using your selected price source</span></div>
+        </section>
+        <div id="notice" class="notice" role="status" hidden></div>
+        <section class="catalogue" aria-label="Storage comparison">
+          <div class="catalogue-title"><div><h2 id="category-title">All rigs</h2><span id="result-caption">Compare every variant on its own merits</span></div><label class="search-control"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search item or variant…" aria-label="Search items" maxlength="200"><kbd>/</kbd></label><button id="reset" class="text-button">Reset filters</button></div>
+          <div class="view-toolbar">
+            <label class="field"><span>Quick filter</span><select id="quick-preset"><option value="">Choose a preset</option><option value="gain">Most extra slots</option><option value="value">Best value per slot</option><option value="pockets">Largest pockets</option><option value="double">2× and above</option></select></label>
+            <label class="field"><span>Columns</span><select id="column-preset"><option value="space">Space</option><option value="value">Value</option><option value="pockets">Pocket layout</option><option value="all">All metrics</option><option value="custom">Custom</option></select></label>
+            <button id="choose-columns" class="button secondary">Choose columns</button><button id="favorites" class="button secondary" aria-pressed="false">☆ Favourites <span id="favorite-count">0</span></button><button id="saved-views" class="button secondary">Saved views</button><button id="access-settings" class="button secondary">Offers: all listed</button>
+            <label class="field density-field"><span>Density</span><select id="density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+            <label class="field mobile-layout-field"><span>Layout</span><select id="mobile-layout"><option value="cards">Cards</option><option value="table">Table</option></select></label>
+          </div>
+          <details id="filters-panel" class="filters-panel"><summary>Shape, efficiency, price source &amp; budget</summary>
+          <div class="filter-bar">
+            <label class="field"><span>Minimum efficiency</span><select id="min-efficiency"><option value="0">Any efficiency</option><option value="1">1.00× and up</option><option value="1.25">1.25× and up</option><option value="1.66" selected>1.66× and up</option><option value="2">2.00× and up</option><option value="3">3.00× and up</option></select></label>
+            <label class="field"><span>Price source</span><select id="price-source"><option value="best">Cheapest cash / flea</option><option value="trader">Trader cash purchase</option><option value="flea">Latest flea price</option><option value="average">24h flea average</option></select></label>
+            <label class="field budget"><span>Budget (₽)</span><input id="budget" type="number" min="0" step="1" placeholder="No limit" aria-label="Maximum purchase price in roubles"></label>
+          </div>
+          <form id="shape-form" class="shape-filter">
+            <label class="check"><input type="checkbox" id="shape-enabled">Fits this shape</label>
+            <div class="shape-fields"><label class="field"><span>Width (slots)</span><input id="shape-width" type="number" min="1" max="100" step="1" value="2" required></label><span aria-hidden="true">×</span><label class="field"><span>Height (slots)</span><input id="shape-height" type="number" min="1" max="100" step="1" value="2" required></label><label class="check"><input id="shape-rotate" type="checkbox" checked>Allow rotation</label><label class="field shape-category"><span>Item category (optional)</span><select id="shape-category"><option value="">Dimensions only</option></select></label><button class="button secondary" type="submit">Apply shape</button></div>
+            <p class="detail-caption">Checks one item against each separate pocket. Select a category to check known storage rules. This is not a packing count.</p><p id="planner-options-status" class="detail-caption" role="status"></p>
+          </form>
+          </details>
+          <div class="sort-bar"><div class="sort-controls"><span class="sort-label">SORT BY</span><span class="sort-step">1</span><label class="sr-only" for="sort-primary">Primary sort</label><select id="sort-primary"></select><button class="direction" id="direction-primary" aria-label="Primary sort: descending" title="Change primary direction">↓</button><span class="then-label">then</span><span class="sort-step muted-step">2</span><label class="sr-only" for="sort-secondary">Secondary sort</label><select id="sort-secondary"></select><button class="direction" id="direction-secondary" aria-label="Secondary sort: ascending" title="Change secondary direction">↑</button></div><label class="check"><input id="positive-only" type="checkbox" checked>Slot-positive only</label></div>
+          <div class="view-context"><p id="sort-description"></p><div id="filter-chips" aria-label="Active filters"></div></div>
+          <details class="score-guide">
+            <summary>How the scores work <span>Pocket layout and value for money</span></summary>
+            <div class="score-guide-body">
+              <p>Each storage cell gets the area of the pocket it belongs to. The <strong>pocket score</strong> is the average across all cells. These layouts all hold four slots:</p>
+              <div class="score-examples">
+                <div class="score-example"><div class="pockets" aria-hidden="true"><div class="pocket" style="grid-template-columns:repeat(2,15px)"><span class="pocket-cell"></span><span class="pocket-cell"></span><span class="pocket-cell"></span><span class="pocket-cell"></span></div></div><span>1 pocket at 2 × 2</span><strong>4.00</strong></div>
+                <div class="score-example"><div class="pockets" aria-hidden="true"><div class="pocket" style="grid-template-columns:repeat(2,15px)"><span class="pocket-cell"></span><span class="pocket-cell"></span></div><div class="pocket" style="grid-template-columns:repeat(2,15px)"><span class="pocket-cell"></span><span class="pocket-cell"></span></div></div><span>2 pockets at 2 × 1</span><strong>2.00</strong></div>
+                <div class="score-example"><div class="pockets" aria-hidden="true"><div class="pocket"><span class="pocket-cell"></span></div><div class="pocket"><span class="pocket-cell"></span></div><div class="pocket"><span class="pocket-cell"></span></div><div class="pocket"><span class="pocket-cell"></span></div></div><span>4 pockets at 1 × 1</span><strong>1.00</strong></div>
+              </div>
+              <p><strong>Formula:</strong> sum of (pocket area × pocket area) ÷ total internal slots. Higher is better. This compares pocket layout separately from capacity and stash efficiency. A 2 × 2 and a 1 × 4 pocket both score 4.00; check the pictured layout and storage restrictions for the items you want to fit.</p>
+              <p>Select <strong>Pocket score ↓</strong> as either sorting level to combine it with efficiency or price. Missing or incomplete layouts show a dash and sort last.</p>
+              <p><strong>Cost / efficiency:</strong> selected purchase price ÷ storage efficiency. A 2× rig costing 40,000 ₽ is <strong>20,000 ₽ per 1× efficiency</strong>. Lower is better. This uses your chosen price source and can be either sorting level.</p>
+            </div>
+          </details>
+          <div id="item-cards" class="item-cards" hidden></div>
+          <div class="table-scroll" id="table-frame" tabindex="0" aria-label="Storage comparison table; scroll horizontally for more columns">
+            <table id="items-table"><caption class="sr-only">Storage items and acquisition costs. Use header buttons to sort, or the two sort controls above.</caption><thead><tr>
+              <th class="item-heading" data-field="name"><button>Item <span class="sort-mark"></span></button></th>
+              <th data-field="footprint"><button title="Slots occupied in the stash">Stash <span class="sort-mark"></span></button></th>
+              <th data-field="capacity"><button>Inside <span class="sort-mark"></span></button></th>
+              <th data-field="gain"><button>Extra <span class="sort-mark"></span></button></th>
+              <th data-field="efficiency"><button>Efficiency <span class="sort-mark"></span></button></th>
+              <th data-field="pocketScore"><button title="Higher scores mean larger connected pockets. Open How the scores work for the formula.">Pocket score <span class="sort-mark"></span></button></th>
+              <th data-field="costPerEfficiency"><button title="Selected purchase price divided by storage efficiency. Roubles per 1× efficiency; lower is better.">Cost / efficiency <span class="sort-mark"></span></button></th>
+              <th data-field="traderPrice"><button title="Direct trader purchase, excluding barters">Trader buy <span class="sort-mark"></span></button></th>
+              <th data-field="fleaPrice"><button>Flea price <span class="sort-mark"></span></button></th>
+              <th data-field="fleaAverage"><button>24h average <span class="sort-mark"></span></button></th>
+              <th data-field="costPerGain"><button title="Selected acquisition cost divided by extra slots gained">₽ / extra slot <span class="sort-mark"></span></button></th>
+              <th class="arrow-heading"><span class="sr-only">Details</span></th>
+            </tr></thead><tbody id="items-body"></tbody></table>
+            <div id="loading" class="empty-state"><div class="loader"></div><h3>Finding you more room</h3><p id="loading-message">Connecting to the latest item data…</p><small>The first load includes images, storage layouts and purchase offers.</small></div>
+            <div id="empty" class="empty-state" hidden><span class="empty-grid" aria-hidden="true">▦</span><h3>No items fit those filters</h3><p id="empty-message">Remove a filter above or reset your filters.</p><div id="empty-actions"></div><button id="empty-reset" class="button">Reset filters</button></div>
+            <div id="error" class="empty-state" hidden><span class="empty-grid" aria-hidden="true">↻</span><h3>The item feed is taking a break</h3><p id="error-message">Please try again in a moment.</p><button id="retry" class="button">Try again</button></div>
+          </div>
+          <div class="table-footer"><span id="table-count">Loading items…</span><span>Cash purchase prices · no barter valuation · plate sockets excluded</span></div>
+        </section>
+        <p class="price-note" id="price-note">Prices are community-reported snapshots. Refreshes check for new quotes every 5 minutes.</p>
+      </main>
+    </div>
+  </div>
+  <dialog id="details" aria-labelledby="detail-title"><button class="dialog-close" id="close-details" aria-label="Close item details">×</button><div id="detail-content"></div></dialog>
+  <section id="compare-tray" class="compare-tray" aria-label="Comparison tray" hidden><div id="compare-pills"></div><span id="compare-tray-status" role="status"></span><button id="open-compare" class="button">Compare</button><button id="clear-compare" class="text-button">Clear tray</button></section>
+  <dialog id="access-dialog" class="settings-dialog" aria-labelledby="access-title"><div class="settings-head"><h2 id="access-title">Trader access</h2><button class="button secondary" data-close="access-dialog">Cancel</button></div><p id="access-market" class="detail-caption"></p><p class="detail-caption">Saved only in this browser, separately for each market. Confirm your own unlocks; unknown access is excluded from My accessible offers.</p><p id="access-status" role="status"></p><form id="access-form"><label class="field"><span>Use these prices</span><select id="access-scope"><option value="all">All listed offers</option><option value="mine">My accessible offers</option></select></label><label class="field"><span>Flea market access</span><select id="access-flea"><option value="unknown">Not confirmed</option><option value="true">Unlocked</option><option value="false">Locked / disabled</option></select></label><div id="trader-levels" class="trader-levels"></div><h3>Confirmed quest purchase unlocks</h3><p class="detail-caption">Check an unlock only if you have completed its requirement. When the source supplies only an ID, the affected purchase is shown.</p><div id="quest-unlocks" class="quest-unlocks"></div><div class="settings-footer"><button id="apply-access" class="button" type="submit">Apply access settings</button><button id="retry-access" type="button" class="button secondary" hidden>Retry loading options</button></div></form></dialog>
+  <dialog id="compare-dialog" class="settings-dialog comparison-dialog" aria-labelledby="compare-title"><div class="settings-head"><h2 id="compare-title">Compare storage</h2><button class="button secondary" data-close="compare-dialog">Done</button></div><p id="compare-context" class="detail-caption"></p><p id="compare-notice" role="status" class="detail-caption"></p><div id="compare-content"></div><p class="detail-caption">Totals treat each container as independently placed in the stash. Pocket checks describe a single item; totals do not calculate nested storage or optimal packing.</p></dialog>
+  <dialog id="columns-dialog" class="settings-dialog" aria-labelledby="columns-title"><div class="settings-head"><h2 id="columns-title">Choose columns</h2><button class="button secondary" data-close="columns-dialog">Done</button></div><p class="detail-caption">Item identity and active sorting columns always stay visible.</p><div id="column-options" class="column-options"></div></dialog>
+  <dialog id="views-dialog" class="settings-dialog" aria-labelledby="views-title"><div class="settings-head"><h2 id="views-title">Saved views</h2><button class="button secondary" data-close="views-dialog">Done</button></div><p class="detail-caption">Save these filters, sorting and columns on this browser. A shared URL takes priority when opened.</p><form id="save-view-form"><label class="field"><span>View name</span><input id="view-name" maxlength="50" required placeholder="e.g. Budget rigs with big pockets"></label><button class="button" id="save-view-submit">Save current view</button><button type="button" id="cancel-rename" class="text-button" hidden>Cancel rename</button></form><div id="views-list"></div><div class="settings-footer"><button id="export-preferences" class="button secondary">Export preferences</button><button id="import-preferences" class="button secondary">Import preferences</button><input id="preferences-file" type="file" accept=".json,application/json" hidden><button id="reset-preferences" class="text-button">Reset local preferences</button><button id="undo-preferences" class="text-button" hidden>Undo last change</button></div><p id="import-status" role="status" aria-live="polite" class="detail-caption"></p><p class="detail-caption">Import replaces saved preferences in this browser; Undo restores the previous settings. Up to 20 views and 100 favourites. No catalogue or images are stored in these preferences.</p></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

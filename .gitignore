@@ -1,0 +1,9 @@
+/target/
+/.cargo-home/
+/.cache/
+/logs/
+/output/
+/dist/
+/node_modules/
+/.playwright-cli/
+*.log

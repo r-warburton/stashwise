@@ -1,0 +1,70 @@
+name: Publish Stashwise snapshots
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+
+permissions:
+  contents: read
+concurrency:
+  group: stashwise-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install Rust target
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal --component rustfmt --target wasm32-unknown-unknown
+          rustup default 1.99.0
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            .cache/wasm-cli
+          key: rust-pages-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Build and test the shared engine
+        run: |
+          mkdir -p .cache
+          cargo fmt --all -- --check
+          cargo build --release --locked
+          cargo test --locked
+          cargo build --release --locked --target wasm32-unknown-unknown --lib
+          if [ ! -x .cache/wasm-cli/bin/wasm-bindgen ]; then
+            cargo install wasm-bindgen-cli --version 0.2.130 --locked --root .cache/wasm-cli
+          fi
+          .cache/wasm-cli/bin/wasm-bindgen --target web --out-dir .cache/wasm-web --out-name stashwise_core target/wasm32-unknown-unknown/release/stashwise_core.wasm
+          node --test tests/*.test.mjs
+      - uses: actions/configure-pages@v5
+        id: pages
+      - name: Update validated snapshots and build the static site
+        env:
+          PAGES_PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}
+        run: node scripts/build-pages.mjs
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/pages
+          retention-days: 1
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
