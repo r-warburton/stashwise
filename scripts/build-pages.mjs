@@ -9,6 +9,7 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const args=process.argv.slice(2),option=(name,fallback)=>args.includes(name)?args[args.indexOf(name)+1]:fallback;
 const output=path.resolve(root,option('--out','dist/pages'));
 if(!output.startsWith(path.join(root,'dist')+path.sep))throw new Error('Pages output must be a fresh directory under dist.');
+await mkdir(path.dirname(output),{recursive:true});
 await mkdir(output); // Deliberately refuse to overwrite an existing distribution.
 const wasm=path.resolve(root,option('--wasm','.cache/wasm-web'));
 const assets=new Map();
@@ -29,8 +30,11 @@ const manifest=await publishSnapshots({cacheDir:path.join(root,args.includes('--
   previousUrl:process.env.PAGES_PREVIOUS_URL||undefined,refresh:!args.includes('--cached')});
 await writeFile(path.join(output,'build.json'),JSON.stringify({version:'0.4.0',assets:assetDirectory,publishedAt:manifest.publishedAt}));
 const registry=path.join(process.env.CARGO_HOME||path.join(homedir(),'.cargo'),'registry','src');
+const lockfile=await readFile(path.join(root,'Cargo.lock'),'utf8');
+const runtimePackages=new Set([...lockfile.matchAll(/\[\[package\]\]\s+name = "([^"]+)"\s+version = "([^"]+)"/g)].map(match=>`${match[1]}-${match[2]}`));
 let notices='Stashwise dependency notices\n\nUnofficial fan tool. Escape from Tarkov and artwork belong to Battlestate Games. Data is attributed to Tarkov.dev and labelled fallback services in the app. No artwork or whole-game feed is bundled.\n';
 for(const directory of await readdir(registry))for(const pkg of await readdir(path.join(registry,directory))){
+  if(!runtimePackages.has(pkg))continue;
   const location=path.join(registry,directory,pkg);
   for(const file of (await readdir(location)).filter(name=>/^licen[sc]e(?:[-.]|$)/i.test(name))){try{notices+=`\n--- ${pkg} / ${file} ---\n${await readFile(path.join(location,file),'utf8')}\n`;}catch(error){if(error.code!=='EISDIR')throw error;}}
 }

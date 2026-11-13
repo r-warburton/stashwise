@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile,mkdtemp,mkdir,rm} from 'node:fs/promises';
+import {readFile,mkdtemp,mkdir,rm,cp,writeFile} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {homedir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {runCore} from '../lib/core.mjs';
+import {runCore,corePath} from '../lib/core.mjs';
 import {createPagesEngine,digest,validateManifest,snapshotMeta,MODES} from '../lib/pages-engine.mjs';
 import {publishSnapshots} from '../lib/pages-publish.mjs';
 import {CatalogStore} from '../lib/feed.mjs';
@@ -112,4 +116,21 @@ test('portable preference exports retain all user choices and reject invalid fil
   assert.equal(importPreferences(JSON.stringify({...prefs,version:1})).version,2);
   for(const input of ['{broken','{}',JSON.stringify({...prefs,version:99}),' '.repeat(129*1024)])assert.throws(()=>importPreferences(input));
   assert.equal(importPreferences(JSON.stringify({...prefs,catalogue:{private:'not retained'}})).catalogue,undefined);
+});
+
+test('Pages builds in a clean checkout without dist and refuses to overwrite an existing release',async t=>{
+  const root=fileURLToPath(new URL('../',import.meta.url)),dir=await temporary(t),data=await dataset();
+  for(const folder of ['lib','public'])await cp(path.join(root,folder),path.join(dir,folder),{recursive:true});
+  await mkdir(path.join(dir,'scripts'));await mkdir(path.join(dir,'.cache/wasm-web'),{recursive:true});
+  for(const file of ['scripts/build-pages.mjs','Cargo.lock'])await cp(path.join(root,file),path.join(dir,file));
+  for(const file of ['stashwise_core.js','stashwise_core_bg.wasm'])await cp(path.join(root,'.cache/wasm-web',file),path.join(dir,'.cache/wasm-web',file));
+  for(const mode of Object.keys(MODES))await writeFile(path.join(dir,'.cache',`${mode}.json`),data.files.get('/stashwise/'+data.manifest.modes[mode].file));
+  const env={...process.env,STASHWISE_CORE:corePath,CARGO_HOME:process.env.CARGO_HOME||(existsSync(path.join(root,'.cargo-home'))?path.join(root,'.cargo-home'):path.join(homedir(),'.cargo'))};
+  assert.equal(existsSync(path.join(dir,'dist')),false);
+  await promisify(execFile)(process.execPath,['scripts/build-pages.mjs','--cached'],{cwd:dir,env});
+  const html=await readFile(path.join(dir,'dist/pages/index.html'),'utf8');
+  assert.match(html,/data-distribution="pages"/);assert.ok(!html.includes('href="/"'));assert.match(html,/\.\/assets\//);
+  assert.ok(await readFile(path.join(dir,'dist/pages/THIRD-PARTY-NOTICES.txt')));
+  await assert.rejects(promisify(execFile)(process.execPath,['scripts/build-pages.mjs','--cached'],{cwd:dir,env}),/EEXIST/);
+  assert.equal(await readFile(path.join(dir,'dist/pages/index.html'),'utf8'),html);
 });
