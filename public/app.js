@@ -244,7 +244,7 @@ $('#preferences-file').addEventListener('change',async event=>{
     undoPreferences=structuredClone(preferences);preferences=imported;
     Object.assign(state,cleanView(preferences.lastView||defaults));
     persist();cancelRename();renderViews();planner.loadComparison();loadItems({clear:true});
-    status.textContent='Preferences imported. Undo is available below.';
+    status.textContent='Preferences imported. Use Undo last change to restore the previous settings.';
   }catch(error){status.textContent=error.message;}
 });
 $('#reset-preferences').addEventListener('click',()=>{undoPreferences=structuredClone(preferences);preferences=emptyPreferences();Object.assign(state,cleanView(defaults));persist();cancelRename();renderViews();planner.loadComparison();loadItems();toast('Local preferences reset. Undo is available here.');});
