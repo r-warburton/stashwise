@@ -3,8 +3,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      respect_cadence:
+        description: Skip publishing when all market checks are still recent
+        type: boolean
+        default: false
   schedule:
-    - cron: '7,22,37,52 * * * *'
+    - cron: '3-58/5 * * * *'
 
 permissions:
   contents: read
@@ -16,16 +21,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      publish: ${{ steps.cadence.outputs.publish }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
+      - uses: actions/configure-pages@v5
+        id: pages
+      - name: Check whether source prices are due
+        id: cadence
+        env:
+          PAGES_PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}
+          STASHWISE_SCHEDULE_CHECK: ${{ github.event_name == 'schedule' || inputs.respect_cadence == true }}
+        run: node scripts/check-publication.mjs
       - name: Install Rust target
+        if: steps.cadence.outputs.publish == 'true'
         run: |
           rustup toolchain install 1.99.0 --profile minimal --component rustfmt --target wasm32-unknown-unknown
           rustup default 1.99.0
       - uses: actions/cache@v4
+        if: steps.cadence.outputs.publish == 'true'
         with:
           path: |
             ~/.cargo/registry
@@ -34,6 +51,7 @@ jobs:
             .cache/wasm-cli
           key: rust-pages-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Build and test the shared engine
+        if: steps.cadence.outputs.publish == 'true'
         run: |
           mkdir -p .cache
           cargo fmt --all -- --check
@@ -45,18 +63,19 @@ jobs:
           fi
           .cache/wasm-cli/bin/wasm-bindgen --target web --out-dir .cache/wasm-web --out-name stashwise_core target/wasm32-unknown-unknown/release/stashwise_core.wasm
           node --test tests/*.test.mjs
-      - uses: actions/configure-pages@v5
-        id: pages
       - name: Update validated snapshots and build the static site
+        if: steps.cadence.outputs.publish == 'true'
         env:
           PAGES_PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}
         run: node scripts/build-pages.mjs
       - uses: actions/upload-pages-artifact@v4
+        if: steps.cadence.outputs.publish == 'true'
         with:
           path: dist/pages
           retention-days: 1
   deploy:
     needs: build
+    if: needs.build.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
