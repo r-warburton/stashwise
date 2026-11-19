@@ -1,3 +1,4 @@
+import {pocketMarkup} from './pockets.js';
 import {apiFetch} from './transport.js';
 import {cleanAccess} from './preferences.js';
 
@@ -48,12 +49,17 @@ export function initPlanner({state,getPreferences,persist,loadItems,toast,esc,mo
     $('#compare-tray-status').textContent=pending?'Updating…':comparisonError?'Prices unavailable · retry in Compare':'';
     $('#compare-pills').innerHTML=lines.map(line=>{const item=comparison?.rows.find(row=>row.id===line.id)?.item;const src=imageUrl(item?.image);return `<div class="compare-pill">${src?`<img src="${esc(src)}" alt="" width="28" height="28">`:''}<span>${esc(item?.shortName||item?.name||line.id)}${line.quantity>1?` × ${line.quantity}`:''}</span><button class="text-button" data-remove-compare="${esc(line.id)}" aria-label="Remove ${esc(item?.name||line.id)} from comparison">×</button></div>`;}).join('');
   }
-  function pocketDiagram(item){return `<div class="pockets compare-pockets">${item.grids.map((grid,index)=>{const match=item.fit?.pockets.find(pocket=>pocket.index===index);return `<div><div class="pocket ${match&&match.status!=='blocked'?'matching-pocket':''}" style="grid-template-columns:repeat(${grid.width},8px)" role="img" aria-label="${grid.width} by ${grid.height} pocket${match?`, ${match.status}`:''}">${'<span class="pocket-cell"></span>'.repeat(grid.width*grid.height)}</div><span class="pocket-label">${grid.width} × ${grid.height}${match&&match.status!=='blocked'?' ✓':''}</span></div>`;}).join('')}</div>`;}
+  function pocketDiagram(item){return `<div class="pockets compare-pockets">${pocketMarkup(item,true)}</div>`;}
+  let comparisonRenderDeferred=false;
   function renderComparison(){
     const lines=getPreferences().comparison,context=priceContext(),sameData=comparison&&comparisonContext===context&&comparison.queryKey===comparisonParams().toString();
     $('#compare-context').textContent=`${modeNames[state.mode]} · ${state.source==='best'?'Cheapest cash / flea':state.source==='trader'?'Trader cash':state.source==='average'?'24h flea average':'Latest flea'} · ${state.accessMode==='mine'?'My accessible offers':'All listed offers'}`;
     $('#compare-content').setAttribute('aria-busy',String(pending));
-    $('#compare-notice').textContent=comparisonError||(pending?'Updating comparison…':changedPrices?'One or more selected prices changed. Your selections are kept.':comparison?.meta.stale?'Some source quotes are old or unavailable; check offers before buying.':'');
+    $('#compare-notice').textContent=comparisonError||(pending?'Updating comparison…':changedPrices?'One or more selected prices changed. Your selections are kept.':comparison?.meta.checkDelayed?'Published price updates are delayed; these prices may be outdated.':comparison?.meta.stale?'Some source quotes are old or unavailable; check offers before buying.':'');
+    // A price/options response can finish after editing has started. Keep the
+    // input and its draft until focus leaves; the latest result stays in memory.
+    if(document.activeElement?.matches('#compare-content input')){comparisonRenderDeferred=true;return;}
+    comparisonRenderDeferred=false;
     if(!lines.length){$('#compare-content').innerHTML='<p class="detail-caption">Use the + buttons beside items to compare up to four candidates.</p>';return;}
     if(!sameData){$('#compare-content').innerHTML=comparisonError?'<button class="button secondary" data-retry-compare>Retry comparison</button>':'<p class="detail-caption">Loading the selected items and prices…</p>';return;}
     const number=value=>value==null?'—':String(value);
@@ -107,6 +113,11 @@ export function initPlanner({state,getPreferences,persist,loadItems,toast,esc,mo
     if(!input.checkValidity()){input.reportValidity();input.value=line.quantity;return;}
     line.quantity=Number(input.value);persist();loadComparison({focusId:input.dataset.compareQuantity});
   });
+  $('#compare-content').addEventListener('focusout',event=>{
+    // Let a newly focused comparison control finish its click/keyboard action.
+    if(event.relatedTarget?.closest('#compare-content'))return;
+    queueMicrotask(()=>{if(comparisonRenderDeferred&&$('#compare-dialog').open&&!document.activeElement?.matches('#compare-content input'))renderComparison();});
+  });
   for(const [id,trigger]of [['access-dialog','access-settings'],['compare-dialog','open-compare']])$(`#${id}`).addEventListener('close',()=>{$(`#${trigger}`).focus();});
-  return {requestParams,compareButton,sync,onData(data){lastRevision=data.meta.revision;loadOptions();loadComparison();},modeChanged(){optionsController?.abort();optionsNumber++;state.accessMode=profile().enabled?'mine':'all';sync();loadComparison();},loadComparison};
+  return {requestParams,compareButton,sync,onData(data){lastRevision=data.meta.revision;if(comparison?.meta.revision===data.meta.revision){comparison.meta=data.meta;if($('#compare-dialog').open)renderComparison();}loadOptions();loadComparison();},modeChanged(){optionsController?.abort();optionsNumber++;state.accessMode=profile().enabled?'mine':'all';sync();loadComparison();},loadComparison};
 }

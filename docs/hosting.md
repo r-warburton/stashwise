@@ -50,3 +50,9 @@ The Windows development helper can use project-local extracted copies of the off
 Keep source changes in commits. If a code deployment regresses, revert the offending code commit and let the workflow rebuild; do not reset/fabricate price dates. An upstream failure leaves last-good data labelled stale. A failed build/deployment does not establish a new working release. Check Actions logs and the last deployed version before retrying. The independent local package remains available while hosting is unavailable.
 
 The app and its data are an unofficial fan tool. Escape from Tarkov and artwork belong to Battlestate Games; data/images are attributed to Tarkov.dev and the labelled fallback sources. The deploy artifact includes dependency notices. No telemetry, account login or game-file access is added.
+
+## Price freshness
+
+The cron expression requests updates at minutes 7, 22, 37 and 52. It is a request, not a delivery guarantee: GitHub can delay or drop scheduled runs. The app checks the published manifest every minute while visible, including an open comparison, and when returning to the tab. It pauses during settings or unfinished quantity edits. An unchanged publication preserves the actual source-check and quote timestamps.
+
+After 30 minutes without a successful source check, the app explicitly labels the publication delayed. A new deployment can still contain old quotes when the provider is unavailable; the last-good snapshot remains visibly stale. The Check published prices button cannot trigger Actions. To inspect delivery, compare scheduled run creation timestamps in Actions with data/manifest.json mode checkedAt timestamps; workflow duration is a separate measurement.

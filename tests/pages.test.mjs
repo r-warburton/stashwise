@@ -86,6 +86,22 @@ test('initial broken/incomplete/mismatched snapshots cannot masquerade as a load
   const mismatch=createPagesEngine({baseUrl:'https://example.invalid/stashwise/',core:wasm,fetcher:transport(valid)});assert.equal((await mismatch.request({path:'/api/items'})).status,503);
 });
 
+test('a correctly hashed but unsafe pocket layout retains the last valid snapshot',async()=>{
+  let data=await dataset();
+  const engine=createPagesEngine({baseUrl:'https://example.invalid/stashwise/',core:wasm,now:()=>now,fetcher:url=>transport(data)(url)});
+  const first=await engine.request({path:'/api/items?source=flea'});
+  const snapshot=JSON.parse(data.files.get('/stashwise/'+data.manifest.modes.pvp.file));
+  snapshot.items[0].grids=[{width:100,height:100,allowed:[],excluded:[]}];
+  snapshot.revision='invalid-layout';
+  const body=JSON.stringify(snapshot),sha256=await digest(body),file=`data/pvp-${sha256}.json`;
+  data.manifest.modes.pvp={file,sha256};data.files.set('/stashwise/'+file,body);
+  data.files.set('/stashwise/data/manifest.json',JSON.stringify(data.manifest));
+  const refresh=await engine.request({path:'/api/refresh',method:'POST'});
+  assert.equal(refresh.status,200);assert.ok(refresh.body.lastError);assert.equal(refresh.body.checkedAt,stamp);
+  const retained=await engine.request({path:'/api/items?source=flea'});
+  assert.deepEqual(retained.body.items,first.body.items);assert.equal(retained.body.meta.revision,first.body.meta.revision);
+});
+
 test('publisher recovers all markets from the previous deployment on source failure without redating',async t=>{
   const dir=await temporary(t),cacheDir=path.join(dir,'cache'),outputDir=path.join(dir,'site'),data=await dataset();
   const store=new CatalogStore(cacheDir,{core:wasm,now:()=>now+3600000,loader:async()=>{throw new Error('source offline');},onError:()=>{}});
@@ -107,7 +123,21 @@ test('publisher refuses an empty first deployment rather than replacing a good s
 
 test('Pages marks delayed scheduled checks stale independently of recent source quote times',()=>{
   const snapshot={mode:'pvp',checkedAt:new Date(now-31*60000).toISOString(),items:[{quoteUpdated:stamp}]};
-  assert.equal(snapshotMeta(snapshot,{publishedAt:stamp},now,null).stale,true);
+  const delayed=snapshotMeta(snapshot,{publishedAt:stamp},now,null);
+  assert.equal(delayed.stale,true);assert.equal(delayed.checkDelayed,true);
+  assert.match(delayed.refreshMessage,/overdue/);
+  const current=snapshotMeta({...snapshot,checkedAt:stamp},{publishedAt:stamp},now,null);
+  assert.equal(current.checkDelayed,false);assert.equal(current.stale,false);
+  for(const checkedAt of ['bad',new Date(now+120000).toISOString()]){
+    assert.equal(snapshotMeta({...snapshot,checkedAt},{publishedAt:stamp},now,null).checkDelayed,true);
+  }
+});
+
+test('WASM rejects unsafe layouts in raw feeds and cached query/comparison data',async()=>{
+  const {items}=await wasm({op:'normalize',items:[raw('rig','rig')]});
+  const poisoned={...items[0],grids:[{width:100,height:100,allowed:[],excluded:[]}]};
+  for(const op of ['query','compare'])await assert.rejects(wasm({op,items:[poisoned],query:{}}),/Invalid pocket layout/);
+  await assert.rejects(wasm({op:'normalize',items:[{...raw('bad','rig'),properties:{capacity:1,grids:[{width:100,height:100}]}}]}),/No valid storage/);
 });
 
 test('portable preference exports retain all user choices and reject invalid files before replacement',()=>{

@@ -33,6 +33,47 @@ struct Grid {
     rules: Option<planner::PocketRules>,
 }
 
+const MAX_POCKETS: usize = 128;
+const MAX_STORAGE_CELLS: u64 = 10000;
+
+// Partial/unknown layouts are supported, but no layout may exceed its stated
+// capacity or the rendering budget. Check raw feeds and cached catalogues alike.
+fn valid_layout(capacity: u64, grids: &[Grid]) -> bool {
+    if capacity == 0 || capacity > MAX_STORAGE_CELLS || grids.len() > MAX_POCKETS {
+        return false;
+    }
+    let mut cells = 0_u64;
+    for grid in grids {
+        if grid.width == 0 || grid.height == 0 || grid.width > 100 || grid.height > 100 {
+            return false;
+        }
+        let Some(total) = grid
+            .width
+            .checked_mul(grid.height)
+            .and_then(|area| cells.checked_add(area))
+        else {
+            return false;
+        };
+        if total > capacity {
+            return false;
+        }
+        cells = total;
+    }
+    true
+}
+
+fn read_catalogue(value: &Value) -> Result<Vec<Item>, String> {
+    let items: Vec<Item> =
+        serde_json::from_value(value.clone()).map_err(|e| format!("Invalid catalogue: {e}"))?;
+    if items
+        .iter()
+        .any(|item| !valid_layout(item.capacity, &item.grids))
+    {
+        return Err("Invalid pocket layout in catalogue".into());
+    }
+    Ok(items)
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PocketSize {
     width: u64,
@@ -141,9 +182,12 @@ fn normalize(raw: &Value, names: &BTreeMap<String, String>) -> Option<Item> {
     } else {
         &raw["grids"]
     };
+    if array(raw_grids).len() > MAX_POCKETS {
+        return None;
+    }
     let grids: Vec<Grid> = array(raw_grids)
         .iter()
-        .filter_map(|grid| {
+        .map(|grid| {
             let w = grid["width"].as_u64()?;
             let h = grid["height"].as_u64()?;
             if w == 0 || h == 0 || w > 100 || h > 100 {
@@ -168,12 +212,12 @@ fn normalize(raw: &Value, names: &BTreeMap<String, String>) -> Option<Item> {
                 ),
             })
         })
-        .collect();
+        .collect::<Option<Vec<_>>>()?;
     let capacity = properties["capacity"]
         .as_u64()
         .or_else(|| raw["capacity"].as_u64())
         .unwrap_or_else(|| grids.iter().map(|g| g.width * g.height).sum());
-    if capacity == 0 || capacity > 10000 {
+    if !valid_layout(capacity, &grids) {
         return None;
     }
     let types: Vec<&str> = array(&raw["types"])
@@ -624,8 +668,7 @@ pub fn run(request: Value) -> Result<Value, String> {
             Ok(json!({"items":items}))
         }
         "query" => {
-            let items: Vec<Item> = serde_json::from_value(request["items"].clone())
-                .map_err(|e| format!("Invalid catalogue: {e}"))?;
+            let items = read_catalogue(&request["items"])?;
             if request["categories"].is_array() {
                 query_items_with_categories(items, &request["query"], array(&request["categories"]))
             } else {
@@ -633,8 +676,7 @@ pub fn run(request: Value) -> Result<Value, String> {
             }
         }
         "compare" => {
-            let items: Vec<Item> = serde_json::from_value(request["items"].clone())
-                .map_err(|e| format!("Invalid catalogue: {e}"))?;
+            let items = read_catalogue(&request["items"])?;
             planner::compare(items, &request["query"], array(&request["categories"]))
         }
         _ => Err("Unknown operation".into()),

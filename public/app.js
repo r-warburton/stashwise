@@ -1,3 +1,4 @@
+import {pocketMarkup} from './pockets.js';
 import {apiFetch} from './transport.js';
 import {STORAGE_KEY,fields,columnPresets,defaults,cleanView,readPreferences,stateFromLocation,visibleColumns,locationParams,quickPresets,emptyPreferences,importPreferences} from './preferences.js';
 import {initPlanner} from './planner.js';
@@ -50,7 +51,7 @@ function imageFallbacks(parent=document) {
 function renderDetails(item) {
   const img=imageUrl(item.largeImage||item.image);
   const metrics=[['Stash footprint',`${item.footprint}`,`${item.width} × ${item.height}`],['Inside slots',item.capacity,'Pocket capacity'],['Extra slots',`${item.gain>0?'+':''}${item.gain}`,'Inside − footprint'],['Efficiency',`${item.efficiency.toFixed(2)}×`,'Inside / footprint']];
-  const gridHtml=item.grids.map(grid=>`<div><div class="pocket" style="grid-template-columns:repeat(${grid.width},15px)" role="img" aria-label="${grid.width} by ${grid.height} pocket">${'<span class="pocket-cell"></span>'.repeat(grid.width*grid.height)}</div><div class="pocket-label">${grid.width} × ${grid.height}</div></div>`).join('');
+  const gridHtml=pocketMarkup(item);
   const tags=values=>values.filter(v=>!v.startsWith('Item/category ')).map(value=>`<span class="tag">${esc(value)}</span>`).join('');
   const unknown=item.restrictions.filter(v=>v.startsWith('Item/category ')).length;
   const excludedUnknown=item.exclusions.filter(v=>v.startsWith('Item/category ')).length;
@@ -109,11 +110,11 @@ function renderChips(){
   $('#empty-message').textContent=state.ids!==null?'Selected favourites may not be available in this market, or another filter may exclude them.':'Remove one of these filters to broaden the results. Your saved views and favourites are kept.';
 }
 function renderFeedStatus(meta){
-  $('#feed-indicator').innerHTML=`<span class="status-dot ${meta.stale?'stale':''}"></span><span>${meta.refreshing?'Checking prices…':`Checked ${esc(age(meta.checkedAt))}${meta.stale?' · some quotes old':''}`}</span>`;
+  $('#feed-indicator').innerHTML=`<span class="status-dot ${meta.stale?'stale':''}"></span><span>${meta.refreshing?'Checking prices…':`Checked ${esc(age(meta.checkedAt))}${meta.checkDelayed?' · publication delayed':meta.stale?' · some quotes old':''}`}</span>`;
   $('#feed-indicator').title=`Oldest source quote: ${fullDate(meta.quoteUpdated)}. Last successful check: ${fullDate(meta.checkedAt)}.`;
   $('#notice').hidden=!meta.stale&&!meta.warnings?.length;$('#notice').classList.toggle('subtle',!meta.stale);
-  $('#notice').textContent=meta.lastError||(meta.stale?'Some quotes are old or have no source timestamp. Check individual offers before buying.':meta.warnings?.join(' ')||'');
-  $('#price-note').innerHTML=`Prices in ₽ equivalents. Trader loyalty / quest requirements may apply. Market quotes can change before purchase.<br>Source: <a href="${esc(safeLink(meta.sourceUrl))}" target="_blank" rel="noreferrer">${esc(meta.source)}</a> · Last checked ${esc(fullDate(meta.checkedAt))}${meta.distribution==='pages'?' · Published snapshots: scheduled source checks about every 15 minutes; delays are possible. Refresh checks the latest publication.':' · Checks every 5 minutes while used.'}`;
+  $('#notice').textContent=meta.lastError||(meta.checkDelayed?`Published prices were last checked ${age(meta.checkedAt)}. GitHub updates are delayed; these prices may be outdated. Check individual offers before buying.`:meta.stale?'Some quotes are old or have no source timestamp. Check individual offers before buying.':meta.warnings?.join(' ')||'');
+  $('#price-note').innerHTML=`Prices in ₽ equivalents. Trader loyalty / quest requirements may apply. Market quotes can change before purchase.<br>Source: <a href="${esc(safeLink(meta.sourceUrl))}" target="_blank" rel="noreferrer">${esc(meta.source)}</a> · Last checked ${esc(fullDate(meta.checkedAt))}${meta.distribution==='pages'?' · Source checks requested every 15 minutes; GitHub may delay or skip runs. This tab checks for published updates every minute while active. Reloading cannot trigger a new source check.':' · Checks every 5 minutes while used.'}`;
 }
 function favoriteButton(item){const saved=preferences.favorites.includes(item.id);return `<button class="favorite-toggle" data-favorite="${esc(item.id)}" aria-pressed="${saved}" aria-label="${saved?'Remove':'Add'} ${esc(item.name)} ${saved?'from':'to'} favourites">${saved?'★':'☆'}</button>`;}
 function itemHeading(item){const img=imageUrl(item.image);return `<div class="item-cell">${favoriteButton(item)}<div class="item-image-wrap">${img?`<img class="item-image" data-item-image src="${esc(img)}" alt="${esc(item.name)}" loading="lazy" width="53" height="53">`:'<span class="image-fallback">▦</span>'}</div><div class="item-name-wrap"><button class="item-name" data-open="${esc(item.id)}">${esc(item.name)}</button><span class="item-sub">${esc(item.restrictionLabel||labelForCategory(item.category))}</span>${item.fit?`<span class="fit-label" data-fit-status="${esc(item.fit.status)}">${esc(item.fit.label)}</span>`:''}</div></div>`;}
@@ -152,7 +153,7 @@ function render(){
   if(focused)$$(`[data-open='${CSS.escape(focused)}']`).find(button=>button.offsetParent)?.focus();
 }
 function apiParams(){const params=locationParams(state);for(const key of ['view','columns','density','mobile'])params.delete(key);params.set('projection','summary');return planner.requestParams(params);}
-async function loadItems({clear=false}={}){
+async function loadItems({clear=false,background=false}={}){
   requestController?.abort();const controller=requestController=new AbortController();const current=++requestNumber;
   persist();syncControls();$('#items-table').setAttribute('aria-busy','true');
   if(clear){catalogue=null;renderKey='';$('#items-body').replaceChildren();$('#item-cards').replaceChildren();$('#item-cards').hidden=true;$('#items-table').hidden=true;for(const id of ['stat-count','stat-efficiency','stat-gain','stat-value'])$(`#${id}`).textContent='—';renderCategories();}
@@ -166,6 +167,7 @@ async function loadItems({clear=false}={}){
     if(response.status===304&&cached){data={...cached.data,meta:JSON.parse(decodeURIComponent(response.headers.get('x-stashwise-meta')))};}
     else {data=await response.json();if(!response.ok)throw new Error(data.error||'Could not load items.');}
     if(current!==requestNumber)return;
+    if(background&&!canCheckPrices())return;
     responses.delete(key);responses.set(key,{etag:response.headers.get('etag'),data});while(responses.size>8)responses.delete(responses.keys().next().value);
     catalogue=data;const nextKey=JSON.stringify([locationParams(state).toString(),key,data.meta.revision]);
     if(nextKey!==renderKey){render();renderKey=nextKey;}else renderFeedStatus(data.meta);
@@ -265,8 +267,10 @@ $('#close-details').addEventListener('click',()=>$('#details').close());
 $('#details').addEventListener('click',event=>{if(event.target===$('#details')){const r=$('#details').getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)$('#details').close();}});
 $('#details').addEventListener('close',()=>{detailController?.abort();detailNumber++;lastTrigger?.isConnected&&lastTrigger.focus();});
 document.addEventListener('keydown',event=>{if(event.key==='/'&&!['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName)&&!$('dialog[open]')){event.preventDefault();$('#filters-panel').open=true;$('#search').focus();}});
-setInterval(()=>{if(!document.hidden&&!$('dialog[open]'))loadItems();},60000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('dialog[open]'))loadItems();});
+// Keep an open comparison current, but preserve unfinished settings and quantity edits.
+function canCheckPrices(){return !document.hidden&&!$('dialog[open]:not(#compare-dialog)')&&!document.activeElement?.matches('#compare-content input');}
+setInterval(()=>{if(canCheckPrices())loadItems({background:true});},60000);
+document.addEventListener('visibilitychange',()=>{if(canCheckPrices())loadItems({background:true});});
 window.addEventListener('popstate',()=>{Object.assign(state,stateFromLocation(location.search,preferences));loadItems({clear:true});});
 planner=initPlanner({state,getPreferences:()=>preferences,persist,loadItems,toast,esc,money,imageUrl,modeNames});
 renderCategories();syncControls();loadItems();
