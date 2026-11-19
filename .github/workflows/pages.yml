@@ -1,4 +1,5 @@
 name: Publish Stashwise snapshots
+run-name: ${{ inputs.timer_tick && format('Google timer {0}', inputs.timer_tick) || 'Publish Stashwise snapshots' }}
 on:
   push:
     branches: [main]
@@ -8,6 +9,14 @@ on:
         description: Skip publishing when all market checks are still recent
         type: boolean
         default: false
+      timer_tick:
+        description: Automatic Google clock invocation time (leave empty for manual runs)
+        type: string
+        default: ''
+      observation_started_at:
+        description: Google timer installation time for the cadence observation
+        type: string
+        default: ''
   schedule:
     - cron: '3-58/5 * * * *'
 
@@ -67,6 +76,8 @@ jobs:
         if: steps.cadence.outputs.publish == 'true'
         env:
           PAGES_PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}
+          STASHWISE_TIMER_TICK: ${{ inputs.timer_tick }}
+          STASHWISE_OBSERVATION_STARTED_AT: ${{ inputs.observation_started_at }}
         run: node scripts/build-pages.mjs
       - uses: actions/upload-pages-artifact@v4
         if: steps.cadence.outputs.publish == 'true'

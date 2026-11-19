@@ -39,4 +39,9 @@ for(const directory of await readdir(registry))for(const pkg of await readdir(pa
   for(const file of (await readdir(location)).filter(name=>/^licen[sc]e(?:[-.]|$)/i.test(name))){try{notices+=`\n--- ${pkg} / ${file} ---\n${await readFile(path.join(location,file),'utf8')}\n`;}catch(error){if(error.code!=='EISDIR')throw error;}}
 }
 await writeFile(path.join(output,'THIRD-PARTY-NOTICES.txt'),notices);
-console.log(JSON.stringify({output,assets:assetDirectory,items:Object.fromEntries(Object.entries(manifest.modes).map(([mode,value])=>[mode,value.count]))}));
+// Persist check times in hosted job logs; a rebuilt fallback keeps its original checkedAt.
+console.log(JSON.stringify({record:'stashwise-publication',output,assets:assetDirectory,
+  runId:process.env.GITHUB_RUN_ID||null,event:process.env.GITHUB_EVENT_NAME||null,
+  timerTick:process.env.STASHWISE_TIMER_TICK||null,observationStartedAt:process.env.STASHWISE_OBSERVATION_STARTED_AT||null,
+  publishedAt:manifest.publishedAt,checkedAt:Object.fromEntries(Object.entries(manifest.modes).map(([mode,value])=>[mode,value.checkedAt])),
+  items:Object.fromEntries(Object.entries(manifest.modes).map(([mode,value])=>[mode,value.count]))}));

@@ -157,7 +157,13 @@ test('Pages builds in a clean checkout without dist and refuses to overwrite an 
   for(const mode of Object.keys(MODES))await writeFile(path.join(dir,'.cache',`${mode}.json`),data.files.get('/stashwise/'+data.manifest.modes[mode].file));
   const env={...process.env,STASHWISE_CORE:corePath,CARGO_HOME:process.env.CARGO_HOME||(existsSync(path.join(root,'.cargo-home'))?path.join(root,'.cargo-home'):path.join(homedir(),'.cargo'))};
   assert.equal(existsSync(path.join(dir,'dist')),false);
-  await promisify(execFile)(process.execPath,['scripts/build-pages.mjs','--cached'],{cwd:dir,env});
+  const {stdout}=await promisify(execFile)(process.execPath,['scripts/build-pages.mjs','--cached'],{cwd:dir,env:{...env,
+    GITHUB_RUN_ID:'1234',GITHUB_EVENT_NAME:'workflow_dispatch',STASHWISE_TIMER_TICK:stamp,STASHWISE_OBSERVATION_STARTED_AT:stamp}});
+  const record=JSON.parse(stdout.trim().split('\n').at(-1));
+  const manifest=JSON.parse(await readFile(path.join(dir,'dist/pages/data/manifest.json'),'utf8'));
+  assert.equal(record.record,'stashwise-publication');assert.equal(record.runId,'1234');assert.equal(record.event,'workflow_dispatch');
+  assert.equal(record.timerTick,stamp);assert.equal(record.observationStartedAt,stamp);assert.equal(record.publishedAt,manifest.publishedAt);
+  for(const mode of Object.keys(MODES))assert.equal(record.checkedAt[mode],stamp,'cached source times must not be redated in observation logs');
   const html=await readFile(path.join(dir,'dist/pages/index.html'),'utf8');
   assert.match(html,/data-distribution="pages"/);assert.ok(!html.includes('href="/"'));assert.match(html,/\.\/assets\//);
   assert.ok(await readFile(path.join(dir,'dist/pages/THIRD-PARTY-NOTICES.txt')));
